@@ -1,0 +1,77 @@
+Here's a breakdown of what these images show about your "Motor model." These charts evaluate a 3-class classification model (for classes 0, 1, and 2).
+
+1. Confusion matrix (all subjects)
+What it is: This table shows the performance of your model by comparing its predictions (x-axis) to the actual true labels (y-axis) for all three classes.
+
+What the numbers mean:
+
+Class 0:
+
+68 were correctly predicted as "0".
+
+10 were incorrectly predicted as "1".
+
+1 was incorrectly predicted as "2".
+
+Class 1:
+
+2 were incorrectly predicted as "0".
+
+269 were correctly predicted as "1".
+
+5 were incorrectly predicted as "2".
+
+Class 2:
+
+5 were incorrectly predicted as "0".
+
+21 were incorrectly predicted as "1".
+
+88 were correctly predicted as "2".
+
+Key Understanding:
+
+The model is excellent at identifying Class 1. This is clearly the dominant class, and the model correctly identifies 269 out of 276 true samples.
+
+The model is good at identifying Class 0 (68 / 79 correct).
+
+The model's biggest weakness is with Class 2. It only correctly identified 88 out of 114 samples. Its most common mistake is confusing Class 2 for Class 1 (which happened 21 times).
+
+2. Motor model ROC curves
+What it is: This graph plots the model's ability to distinguish between classes. It plots the True Positive Rate (sensitivity) against the False Positive Rate (1 - specificity). The "Area Under the Curve" (AUC) measures this ability. A score of 1.0 is perfect; 0.5 is random guessing.
+
+What the curves mean:
+
+Class 0 (cyan, AUC = 0.951): This is an excellent score. It means the model is extremely good at distinguishing "Class 0" from all other classes.
+
+Class 1 (orange, AUC = 0.901): This is a very good score. The model also has strong discriminatory power for "Class 1".
+
+Micro-average (pink, AUC = 0.887): The overall average performance is also strong.
+
+Key Understanding:
+
+This chart shows that your model has high discriminatory power. It is very capable of learning the differences between the classes.
+
+3. Motor model Precision-Recall curves
+What it is: This graph shows the trade-off between Precision (how many positive predictions were correct) and Recall (how many of the true positives were found). "Average Precision" (AP) summarizes this curve. This is often more informative than ROC when classes are imbalanced.
+
+What the curves mean:
+
+Class 1 (orange, AP = 0.897): This is an excellent score, confirming what we saw in the confusion matrix. The model is both precise and finds most of the "Class 1" samples.
+
+Class 0 (cyan, AP = 0.755): This is a decent score. It shows that while the model can distinguish Class 0 (from the high ROC-AUC), its precision isn't as good, especially as it tries to find more samples (higher recall).
+
+Micro-average (pink, AP = 0.769): This average AP is decent, but it's being pulled down significantly.
+
+Key Understanding:
+
+This chart confirms the findings from the confusion matrix. The model is great at Class 1.
+
+The most important clue here is the low micro-average (0.769). Since we know Class 1 (the majority class) has a high AP (0.897), this low average strongly implies that the unplotted curve for Class 2 must be quite poor. This perfectly matches the confusion matrix, where Class 2 was the most poorly-performing class.
+
+Overall Summary
+These images tell a clear story:
+
+Your "Motor model" is a 3-class classifier that is excellent at identifying Class 1, which is likely the most common class. It also has very strong discriminatory power for all classes (as shown by the high ROC-AUC scores).
+
+However, its main weakness is its performance on Class 2. The confusion matrix shows it often mislabels "Class 2" as "Class 1", and the low average precision score (AP = 0.769) backs this up.

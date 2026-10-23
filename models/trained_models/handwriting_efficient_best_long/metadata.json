@@ -1,0 +1,8 @@
+{
+  "class_names": [
+    "healthy",
+    "patient"
+  ],
+  "img_size": 260,
+  "mode": "end2end"
+}

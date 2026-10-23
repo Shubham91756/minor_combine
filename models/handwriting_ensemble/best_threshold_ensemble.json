@@ -1,0 +1,12 @@
+{
+  "threshold": 0.585,
+  "accuracy": 0.9325842696629213,
+  "healthy_recall": 0.9148936170212766,
+  "patient_recall": 0.9523809523809523,
+  "tn": 43,
+  "fp": 4,
+  "fn": 2,
+  "tp": 40,
+  "meets_target": true,
+  "weight_resnet50": 0.75
+}

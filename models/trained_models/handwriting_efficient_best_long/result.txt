@@ -1,0 +1,60 @@
+Here's what I see in these images and what I understand from them.
+
+1. Confusion Matrix
+What it is: This is a performance report for a binary classification model that categorizes subjects as either "healthy" or "patient". It compares the model's predictions ("Predicted label") to the actual truth ("True label").
+
+What the numbers mean:
+
+True Negative (Top-Left): 82
+
+The model correctly predicted "healthy" 82 times for people who were actually healthy.
+
+False Positive (Top-Right): 9
+
+The model incorrectly predicted "patient" 9 times for people who were actually healthy.
+
+False Negative (Bottom-Left): 6
+
+The model incorrectly predicted "healthy" 6 times for people who were actually patients. This is often the most critical error in a medical diagnosis.
+
+True Positive (Bottom-Right): 50
+
+The model correctly predicted "patient" 50 times for people who were actually patients.
+
+My understanding:
+
+The model is reasonably good, but not perfect.
+
+It's better at identifying healthy people (82 correct vs. 9 wrong) than it is at identifying patients (50 correct vs. 6 wrong).
+
+The 6 "False Negatives" are concerning because 6 patients were missed and told they were healthy.
+
+2. Handwriting model validation loss (30 epochs)
+What it is: This graph plots the "validation loss" of a handwriting model over 30 training cycles (epochs). "Loss" is a number that measures how bad the model's errors are. A lower loss is better.
+
+What the trend means:
+
+The line starts high (around 0.147) and steadily goes down, finishing below 0.09.
+
+My understanding:
+
+This is a good sign! A decreasing validation loss means the model is consistently learning and getting better at making predictions on data it hasn't seen before.
+
+The learning is stable and hasn't flatlined, which suggests the model is effectively improving with each epoch.
+
+3. Handwriting model accuracy (50 epochs)
+What it is: This graph plots the model's "accuracy" (the percentage of predictions it got right) over 50 epochs.
+
+What the trend means:
+
+The line is extremely erratic and unstable. It jumps up and down wildly, from as low as ~76% to as high as ~91.5%.
+
+There is no clear, consistent upward trend. For example, the accuracy at epoch 30 is terrible (~76.5%), but at epoch 49 it's excellent (~91.5%).
+
+My understanding:
+
+This indicates unstable training. The model is not learning in a reliable way.
+
+This behavior is often caused by a learning rate that is too high, causing the model to "overshoot" the best solution during training.
+
+Even though the model hits high accuracy points, you can't trust it. You wouldn't know if you got the "good" model (from epoch 49) or the "bad" model (from epoch 46). This model needs to be re-trained with different settings to be reliable.

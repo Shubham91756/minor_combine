@@ -1,0 +1,34 @@
+# Local environments and caches
+.venv/
+.venv_win/
+env/
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env.*.local
+
+# Local machine files and runtime output
+.DS_Store
+backend/error_debug.log
+tmp/
+*.log
+
+# Large trained model binaries should be stored in Git LFS or an artifact store.
+*.h5
+*.keras
+*.joblib
+*.pb
+*.data-*
+*.index
+
+# Raw training datasets are kept outside the source repository.
+new_data/
+
+# Training-generated transient files
+*.npy

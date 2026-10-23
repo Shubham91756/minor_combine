@@ -1,0 +1,101 @@
+These images show three standard methods for evaluating the performance of a binary classification model, which in this case is a "Gait model" (likely classifying a person's walk as normal/abnormal, or belonging to one of two categories).
+
+Here's a breakdown of what each image shows and what it means.
+
+1. Gait confusion matrix
+What it is: This table breaks down the model's predictions versus the actual, true values for a set of data. It shows where the model was right and where it was wrong.
+
+What it means:
+
+True Negatives (TN): 83 (Top-left)
+
+The model correctly predicted class 0 (e.g., "normal gait") 83 times.
+
+False Positives (FP): 9 (Top-right)
+
+The model incorrectly predicted class 1 when it was actually class 0 (9 mistakes).
+
+False Negatives (FN): 0 (Bottom-left)
+
+The model incorrectly predicted class 0 when it was actually class 1 (0 mistakes). This is a significant finding.
+
+True Positives (TP): 214 (Bottom-right)
+
+The model correctly predicted class 1 (e.g., "abnormal gait") 214 times.
+
+Key Understanding:
+
+The model is extremely good at finding class '1'. It has a perfect Recall (or sensitivity) of 100% because it had zero False Negatives (Recall= 
+TP+FN
+TP
+​
+ = 
+214+0
+214
+​
+ =1.0).
+
+It's also very precise. When it predicted class '1', it was right 96% of the time (Precision= 
+TP+FP
+TP
+​
+ = 
+214+9
+214
+​
+ ≈0.96).
+
+Overall accuracy is also high:  
+Total
+TP+TN
+​
+ = 
+214+83+9+0
+214+83
+​
+ = 
+306
+297
+​
+ ≈97.1%.
+
+2. Gait model ROC curve
+What it is: The Receiver Operating Characteristic (ROC) curve plots the model's True Positive Rate (how well it finds class '1') against its False Positive Rate (how often it misidentifies class '0' as '1') at all possible decision thresholds.
+
+What it means:
+
+The dashed grey line represents a model that's just guessing (a 50/50 chance).
+
+The blue curve represents your model. The fact that it's bowed up and to the left, far away from the dashed line, means it's much better than random chance.
+
+The AUC (Area Under the Curve) = 0.852. This single number summarizes the entire curve.
+
+An AUC of 1.0 is a perfect classifier.
+
+An AUC of 0.5 is a useless (random) classifier.
+
+Key Understanding:
+
+An AUC of 0.852 is considered a good to excellent score. It means the model has strong discriminatory power—it's very good at telling the difference between class '0' and class '1'.
+
+3. Gait model Precision-Recall curve
+What it is: This curve shows the trade-off between Precision (how accurate are the positive predictions?) and Recall (how many of the actual positives were found?) at different thresholds. This chart is especially useful when the classes are imbalanced (as they are here: 214 positives vs. 92 negatives).
+
+What it means:
+
+Ideally, you want a curve that stays high and to the right (high precision and high recall).
+
+This model's curve is excellent. It maintains perfect (1.0) precision until it finds about 40% of the positive cases (Recall = 0.4). Even at very high recall (like 0.9), the precision remains high (around 0.9).
+
+The AP (Average Precision) = 0.935. This summarizes the curve, and a value close to 1.0 is excellent.
+
+Key Understanding:
+
+An AP of 0.935 is an excellent score. It shows that the model can identify a large portion of the positive cases (high recall) without wrongly labeling too many negative cases (high precision).
+
+Overall Summary
+All three charts show that this "Gait model" performs very well.
+
+The ROC (AUC = 0.852) and PR (AP = 0.935) curves show that the model is strong and reliable across a wide range of settings.
+
+The Confusion Matrix shows the results at one specific setting (or threshold) where the model was optimized to find every single instance of class '1' (100% recall) while still being very accurate (97.1% overall). This kind of result is outstanding, especially if "missing" a case of class '1' is very bad (e.g., failing to detect an abnormal gait).

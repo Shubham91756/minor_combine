@@ -1,0 +1,68 @@
+# ========================================================================
+# CONSOLIDATED REQUIREMENTS FOR PARKINSONS ML PROJECT
+# Includes: Backend API, Training Scripts, Model Services, Frontend Build
+# ========================================================================
+
+# -------- CORE DEPENDENCIES --------
+# Backend API & Server
+fastapi==0.95.2
+uvicorn[standard]==0.22.0
+python-multipart==0.0.6
+
+# Data Processing & Utilities
+# Python 3.13 compatible versions with flexible constraints
+numpy>=2.0.0
+pandas>=3.0.0
+scipy>=1.13.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+
+# Image & Model I/O
+# Use pre-built wheels to avoid compilation issues
+Pillow>=10.1.0
+h5py>=3.9.0
+
+# -------- HEAVY DEPENDENCIES (TensorFlow) --------
+# Required for: Handwriting prediction, Training scripts
+tensorflow>=2.15.0
+keras>=3.0.0
+
+# -------- TRAINING & MODEL UTILITIES --------
+# For train_fixed.py and all trainer scripts
+matplotlib>=3.8.0
+tqdm>=4.65.0
+imbalanced-learn>=0.12.0
+
+# -------- DEVELOPMENT & MONITORING --------
+watchfiles>=0.20.0
+shap>=0.44.0
+
+# ========================================================================
+# SETUP INSTRUCTIONS
+# ========================================================================
+# 1. Create virtual environment:
+#    python3 -m venv env
+#
+# 2. Activate environment:
+#    source env/bin/activate  (macOS/Linux)
+#    .\env\Scripts\activate    (Windows)
+#
+# 3. Upgrade pip and install all requirements:
+#    pip install --upgrade pip
+#    pip install -r requirements-all.txt
+#
+# 4. To run the backend server:
+#    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+#
+# 5. To run training script (e.g., handwriting):
+#    cd models
+#    python trainers/train_fixed.py
+#
+# ========================================================================
+# NOTES
+# ========================================================================
+# - TensorFlow 2.14.1 includes Keras 2.14.0 (no separate installation needed)
+# - All model services (gait, motor, handwriting) depend on scikit-learn & joblib
+# - The train_fixed.py script requires TensorFlow + image processing packages
+# - Frontend dependencies (React, Node.js) are in frontend/package.json
+# ========================================================================

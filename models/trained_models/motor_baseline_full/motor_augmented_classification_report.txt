@@ -1,0 +1,13 @@
+Best model: none
+class-0 recall metric used: 0.9704
+
+Evaluation on original (non-augmented) data:
+              precision    recall  f1-score   support
+
+           0     0.7935    0.9241    0.8538        79
+           1     0.9291    0.9493    0.9391       276
+           2     0.9789    0.8158    0.8900       114
+
+    accuracy                         0.9126       469
+   macro avg     0.9005    0.8964    0.8943       469
+weighted avg     0.9184    0.9126    0.9128       469
