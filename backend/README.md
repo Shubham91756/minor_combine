@@ -15,7 +15,27 @@ Run
 
 Start the server:
 
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+APP_ENV=development uvicorn backend.main:app --host 127.0.0.1 --port 8001
+
+For a deployment, configure an API key and do not use `--reload`:
+
+```bash
+export APP_ENV=production
+export PARKINSONS_API_KEY="$(openssl rand -hex 32)"
+export FRONTEND_ORIGINS="https://app.example.com"
+uvicorn backend.main:app --host 127.0.0.1 --port 8001
+```
+
+Authenticated requests must include:
+
+```text
+X-API-Key: <value of PARKINSONS_API_KEY>
+```
+
+When `APP_ENV=development` and no API key is configured, only loopback
+requests are accepted. The `/healthz` endpoint remains available for a
+reverse proxy liveness check. Do not expose the development configuration to
+the public internet.
 
 Endpoints
 
@@ -48,3 +68,17 @@ curl -X POST "http://127.0.0.1:8000/predict/motor_csv" -F "file=@/path/to/motor_
 
 4) Gait:
 curl -X POST "http://127.0.0.1:8000/predict/gait" -F "file=@/path/to/GaCo01_01.txt"
+
+Authenticated example:
+
+```bash
+curl -H "X-API-Key: $PARKINSONS_API_KEY" \
+  -X POST "http://127.0.0.1:8001/predict/motor_csv" \
+  -F "file=@/path/to/motor_features.csv"
+```
+
+The frontend reads `REACT_APP_API_KEY` when direct API authentication is
+required. Browser-embedded API keys are visible to users, so for production
+prefer an authenticated reverse proxy or a per-user authentication system.
+Prediction history is not persisted in the browser unless
+`REACT_APP_PERSIST_HISTORY=1` is explicitly set.

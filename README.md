@@ -331,16 +331,19 @@ artifacts at startup (or lazily) and exposes endpoints (examples):
 - `/predict/handwriting` — accepts an image file and returns the handwriting
   class prediction (relies on the Keras model or an embedding + tabular
   classifier depending on how the model was saved).
-- `/info` — returns diagnostics including loaded model paths, feature
-  counts, and any captured load error tracebacks for the motor loader.
+- `/info` — returns safe model status and feature-count metadata. Internal
+  model paths and load tracebacks are never returned to clients.
 
 Key implementation notes
-- `backend/services/motor_service.py` contains the model loader used by the
-  motor endpoint. It is defensive: when joblib.load fails it stores the
-  formatted traceback into a module-level `_LAST_LOAD_ERROR` variable and
-  leaves `_MODEL` as None; calling code raises a clear RuntimeError when
-  prediction is attempted. The `/info` route surfaces that traceback to aid
-  debugging.
+- The backend requires `PARKINSONS_API_KEY` in production and expects it in
+  the `X-API-Key` header. In development, requests without a key are allowed
+  only from loopback addresses. `/healthz` is the only unauthenticated
+  liveness endpoint.
+- Uploads are type-checked, capped at 10 MB, stored under generated temporary
+  names, and removed after prediction. Original filenames are not exposed in
+  motor sessions.
+- Internal tracebacks are logged with an error ID and are not returned to
+  clients.
 - CSV handling: the motor loader coerces columns to numeric and fills
   non-convertible values with 0.0 to avoid type conversion errors during
   prediction. The loader respects the `features` ordering saved in the
@@ -370,8 +373,13 @@ curl -X POST "http://localhost:8000/predict/handwriting" -F "file=@path/to/handw
 The backend server can be started during development with:
 
 ```powershell
-.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8001
 ```
+
+For deployment, set `APP_ENV=production`, `PARKINSONS_API_KEY`, and
+`FRONTEND_ORIGINS`, then run without `--reload`. Put the service behind HTTPS
+and a reverse proxy, and use a separate authentication system for
+multi-user access instead of embedding a shared browser API key.
 
 ## Evaluation highlights and plots
 
@@ -574,4 +582,3 @@ packaging==25.0
 pandas==2.1.2
 ... (truncated)
 ```
-

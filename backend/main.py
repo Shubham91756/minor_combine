@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,6 +15,7 @@ import os
 from datetime import datetime
 import time
 import uuid
+import hmac
 
 # configure simple file logging for debug
 LOG_PATH = Path('backend/error_debug.log')
@@ -26,7 +27,23 @@ app = FastAPI(title='Parkinsons Models API')
 # record startup info for traceability
 SERVER_PID = os.getpid()
 STARTUP_TIME = datetime.utcnow().isoformat()
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+try:
+    MAX_UPLOAD_BYTES = int(os.environ.get('MAX_UPLOAD_BYTES', str(10 * 1024 * 1024)))
+except ValueError as exc:
+    raise RuntimeError('MAX_UPLOAD_BYTES must be an integer number of bytes.') from exc
+if MAX_UPLOAD_BYTES <= 0:
+    raise RuntimeError('MAX_UPLOAD_BYTES must be greater than zero.')
+MAX_SESSION_FILES = 20
+API_KEY = os.environ.get('PARKINSONS_API_KEY')
+APP_ENV = os.environ.get('APP_ENV', 'development').lower()
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        'FRONTEND_ORIGINS',
+        'http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001',
+    ).split(',')
+    if origin.strip()
+]
 
 
 # ------------------------------------------------------------------
@@ -60,6 +77,25 @@ def _motor_session_summary(session_id: str):
         'label': label,
         'files': files,
     }
+
+
+@app.middleware('http')
+async def protect_api(request: Request, call_next):
+    """Require an API key outside local development."""
+    if request.url.path == '/healthz':
+        return await call_next(request)
+
+    if not API_KEY:
+        if APP_ENV == 'production':
+            return JSONResponse(status_code=503, content={'detail': 'API authentication is not configured.'})
+        if request.client and request.client.host not in {'127.0.0.1', '::1', 'localhost'}:
+            return JSONResponse(status_code=401, content={'detail': 'API authentication is required.'})
+        return await call_next(request)
+
+    supplied = request.headers.get('X-API-Key', '')
+    if not hmac.compare_digest(supplied, API_KEY):
+        return JSONResponse(status_code=401, content={'detail': 'Invalid or missing API key.'})
+    return await call_next(request)
 # ------------------------------------------------------------------
 # XAI heatmap cache (in-memory, short TTL)
 # ------------------------------------------------------------------
@@ -147,22 +183,20 @@ def _preload_models():
         logging.error('Failed to preload handwriting model: %s', e)
 
 
+@app.get('/healthz')
+async def healthz():
+    """Return a lightweight liveness response without model internals."""
+    return JSONResponse({'status': 'ok'})
+
+
 # Allow CORS for the frontend during development
 # Accept multiple localhost ports since frontend may run on different ports
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:60181",      # Current frontend port
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:60181",      # Current frontend port
-        "http://localhost:3001",       # Fallback ports
-        "http://localhost:5000",
-        "http://127.0.0.1:5000",
-    ],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 
@@ -298,13 +332,18 @@ async def motor_session_upload(session_id: str, file: UploadFile = File(...)):
     _prune_motor_sessions()
     if session_id not in _MOTOR_SESSIONS:
         return JSONResponse(status_code=404, content={'detail': 'Unknown session_id. Create one at /session/motor/new.'})
+    if len(_MOTOR_SESSIONS[session_id]['files']) >= MAX_SESSION_FILES:
+        return JSONResponse(
+            status_code=413,
+            content={'detail': f'A motor session may contain at most {MAX_SESSION_FILES} files.'},
+        )
 
     dst = None
     try:
-        dst, original_name = await _store_upload(file, {'.txt'})
+        dst, _ = await _store_upload(file, {'.txt'})
         from backend.services.motor_service import predict_from_timeseries_file
         out = predict_from_timeseries_file(str(dst))
-        out['filename'] = original_name
+        out['filename'] = f'file_{len(_MOTOR_SESSIONS[session_id]["files"]) + 1}'
         _MOTOR_SESSIONS[session_id]['files'].append(out)
         return JSONResponse(out)
     except HTTPException:
@@ -335,9 +374,6 @@ async def predict_gait(file: UploadFile = File(...), explain: bool = False):
     try:
         dst, _ = await _store_upload(file, {'.txt'})
         res = predict_from_timeseries_file(str(dst))
-        # attach server trace fields for easier debugging from frontend
-        res['server_pid'] = SERVER_PID
-        res['server_time'] = datetime.utcnow().isoformat()
         return JSONResponse(res)
     except HTTPException:
         raise
@@ -364,30 +400,23 @@ async def xai_heatmap(heatmap_id: str):
 
 @app.get('/info')
 async def info():
-    """Return backend model info so clients can verify which models are loaded."""
+    """Return safe backend model status for authorized clients."""
     try:
         from backend.services import motor_service, handwriting_service
         
         # Get motor model info
         motor_model, motor_feats, motor_labels = motor_service.ensure_loaded()
-        motor_load_error = None
-        try:
-            motor_load_error = motor_service.get_load_error()
-        except Exception:
-            motor_load_error = None
         
         # Get handwriting model info
         hw_model_a, hw_model_b, hw_threshold, hw_weight = handwriting_service.ensure_loaded()
         
         return JSONResponse({
             'motor_model': {
-                'path': str(motor_service.MODEL_PATH),
                 'feature_count': len(motor_feats) if motor_feats is not None else None,
                 'labels': motor_labels,
-                'load_error': motor_load_error,
+                'loaded': motor_model is not None,
             },
             'handwriting_model': {
-                'paths': [str(handwriting_service.MODEL_A_PATH), str(handwriting_service.MODEL_B_PATH)],
                 'image_size': handwriting_service.DEFAULT_IMG_SIZE,
                 'classes': handwriting_service.CLASS_NAMES,
                 'loaded': (hw_model_a is not None and hw_model_b is not None),
@@ -395,14 +424,11 @@ async def info():
                 'weight_resnet': hw_weight,
             },
             'server': {
-                'pid': SERVER_PID,
                 'startup_time': STARTUP_TIME,
             }
         })
     except Exception as e:
-        tb = traceback.format_exc()
-        logging.error('Failed to return info: %s', tb)
-        return JSONResponse(status_code=500, content={'detail': tb})
+        return _server_error('Failed to return info', e)
 
 
 if __name__ == '__main__':

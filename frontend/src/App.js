@@ -22,6 +22,10 @@ const DEMO_MOTOR_JSON = `{
 }`;
 
 const MAX_FILE_MB = 10;
+const API_KEY = process.env.REACT_APP_API_KEY || '';
+const PERSIST_HISTORY = process.env.REACT_APP_PERSIST_HISTORY === '1';
+
+const apiHeaders = () => (API_KEY ? { 'X-API-Key': API_KEY } : {});
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -59,6 +63,7 @@ function App() {
 
   const [fileErrors, setFileErrors] = useState({ handwriting: null, motorJson: null, motorCsv: null, gait: null });
   const [history, setHistory] = useState(() => {
+    if (!PERSIST_HISTORY) return [];
     try {
       const saved = localStorage.getItem('pd_history');
       return saved ? JSON.parse(saved) : [];
@@ -79,14 +84,16 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('pd_history', JSON.stringify(history.slice(0, 25)));
+    if (PERSIST_HISTORY) {
+      localStorage.setItem('pd_history', JSON.stringify(history.slice(0, 25)));
+    }
   }, [history]);
 
   useEffect(() => {
     async function loadInfo() {
       const backend = process.env.REACT_APP_API_URL || '';
       try {
-        const res = await fetch(`${backend}/info`);
+        const res = await fetch(`${backend}/info`, { headers: apiHeaders() });
         if (res.ok) {
           const data = await res.json();
           setModelInfo(data);
@@ -102,7 +109,7 @@ function App() {
     if (demoMode && motorJson.trim() === '{}' ) {
       setMotorJson(DEMO_MOTOR_JSON);
     }
-  }, [demoMode]);
+  }, [demoMode, motorJson]);
 
   const formatModelName = (path) => {
     if (!path) return 'n/a';
@@ -159,7 +166,7 @@ function App() {
 
     const tryFetch = async (base) => {
       const fullUrl = base ? `${base}${url}` : url;
-      const res = await fetch(fullUrl, { method: 'POST', body: form });
+      const res = await fetch(fullUrl, { method: 'POST', body: form, headers: apiHeaders() });
       const text = await res.text();
       try {
         const parsed = JSON.parse(text);
@@ -207,7 +214,7 @@ function App() {
       const fullUrl = base ? `${base}${url}` : url;
       const res = await fetch(fullUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...apiHeaders() },
         body: JSON.stringify(payload),
       });
       const text = await res.text();
@@ -504,13 +511,13 @@ function App() {
       if (motorTsFiles.length === 1) {
         dataRaw = await postFile('/predict/motor_timeseries', motorTsFiles[0]);
       } else {
-        const resNew = await fetch('/session/motor/new');
+        const resNew = await fetch('/session/motor/new', { headers: apiHeaders() });
         const newJson = await resNew.json();
         const sessionId = newJson.session_id;
         for (const f of motorTsFiles) {
           await postFile(`/session/motor/${sessionId}/upload`, f);
         }
-        const resSum = await fetch(`/session/motor/${sessionId}/summary`);
+        const resSum = await fetch(`/session/motor/${sessionId}/summary`, { headers: apiHeaders() });
         dataRaw = await resSum.json();
       }
       // For dashboard display: use binary patient probability if available

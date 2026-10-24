@@ -281,14 +281,6 @@ def predict_from_features_dict(features_dict):
         'notes': 'Top features are global importances from the motor model; values are from the uploaded feature vector.',
     }
 
-    try:
-        import os
-        from datetime import datetime
-        resp['server_pid'] = os.getpid()
-        resp['server_time'] = datetime.utcnow().isoformat()
-    except Exception:
-        pass
-
     return resp
 
 
@@ -457,4 +449,3 @@ def predict_from_timeseries_file(file_path: str):
     """
     feats = _motor_file_features(file_path)
     return predict_from_features_dict(feats)
-
