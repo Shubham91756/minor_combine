@@ -1,10 +1,10 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from pathlib import Path
-import shutil
+import tempfile
 
 from backend.services.handwriting_service import predict_image, predict_image_xai, ensure_loaded as ensure_handwriting_loaded
 from backend.services.motor_service import predict_from_features_dict, ensure_loaded
@@ -26,6 +26,7 @@ app = FastAPI(title='Parkinsons Models API')
 # record startup info for traceability
 SERVER_PID = os.getpid()
 STARTUP_TIME = datetime.utcnow().isoformat()
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 # ------------------------------------------------------------------
@@ -65,6 +66,55 @@ def _motor_session_summary(session_id: str):
 _XAI_HEATMAPS = {}  # heatmap_id -> {'created_at': float, 'png': bytes}
 _XAI_HEATMAP_TTL_SEC = 10 * 60  # 10 minutes
 _XAI_HEATMAP_MAX_ITEMS = 64
+
+
+async def _store_upload(file: UploadFile, allowed_suffixes: set[str]) -> tuple[Path, str]:
+    """Store an upload under a generated name and enforce basic request limits."""
+    original_name = Path(file.filename or '').name
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in allowed_suffixes:
+        allowed = ', '.join(sorted(allowed_suffixes))
+        raise HTTPException(status_code=415, detail=f'Unsupported file type. Expected: {allowed}.')
+
+    upload_root = Path('tmp')
+    upload_root.mkdir(exist_ok=True)
+    tmp_dir = Path(tempfile.mkdtemp(prefix='parkinsons-upload-', dir=upload_root))
+    destination = tmp_dir / f'{uuid.uuid4().hex}{suffix}'
+    total = 0
+    try:
+        with destination.open('wb') as output:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f'Uploaded file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit.',
+                    )
+                output.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        tmp_dir.rmdir()
+        raise
+    finally:
+        await file.close()
+    return destination, original_name
+
+
+def _remove_upload(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    try:
+        path.parent.rmdir()
+    except OSError:
+        logging.warning('Unable to remove temporary upload directory %s', path.parent)
+
+
+def _server_error(message: str, exc: Exception) -> JSONResponse:
+    error_id = uuid.uuid4().hex
+    logging.error('%s [%s]: %s', message, error_id, traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={'detail': 'Prediction failed. Contact the server administrator with error ID ' + error_id},
+    )
 
 
 def _prune_xai_heatmaps():
@@ -122,8 +172,19 @@ class MotorFeatures(BaseModel):
 
 @app.post('/predict/handwriting')
 async def predict_handwriting(file: UploadFile = File(...), explain: bool = False):
-    content = await file.read()
     try:
+        suffix = Path(file.filename or '').suffix.lower()
+        if suffix not in {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}:
+            raise HTTPException(
+                status_code=415,
+                detail='Unsupported file type. Expected a JPEG, PNG, BMP, or WebP image.',
+            )
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f'Uploaded file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit.',
+            )
         if explain:
             res, heat_png = predict_image_xai(content)
             if heat_png:
@@ -140,16 +201,14 @@ async def predict_handwriting(file: UploadFile = File(...), explain: bool = Fals
             return JSONResponse(res)
         res = predict_image(content)
         return JSONResponse(res)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         # known runtime errors (e.g., missing heavy deps) -> return concise message
         logging.error("RuntimeError in predict_handwriting: %s", str(e))
         return JSONResponse(status_code=500, content={"detail": str(e)})
     except Exception as e:
-        tb = traceback.format_exc()
-        # write traceback to log for inspection
-        logging.error("Exception in predict_handwriting: %s", tb)
-        # return traceback in JSON for debugging (development only)
-        return JSONResponse(status_code=500, content={"detail": tb})
+        return _server_error('Exception in predict_handwriting', e)
 
 
 @app.post('/predict/motor')
@@ -171,29 +230,27 @@ async def predict_motor_json(body: MotorFeatures):
         logging.error("RuntimeError in predict_motor_json: %s", str(e))
         return JSONResponse(status_code=500, content={"detail": str(e)})
     except Exception as e:
-        tb = traceback.format_exc()
-        logging.error("Exception in predict_motor_json: %s", tb)
-        return JSONResponse(status_code=500, content={"detail": tb})
+        return _server_error('Exception in predict_motor_json', e)
 
 
 @app.post('/predict/motor_csv')
 async def predict_motor_csv(file: UploadFile = File(...)):
-    tmp = Path('tmp')
-    tmp.mkdir(exist_ok=True)
-    dst = tmp / file.filename
-    with dst.open('wb') as f:
-        shutil.copyfileobj(file.file, f)
-    from backend.services.motor_service import predict_from_csv
-    out = predict_from_csv(str(dst))
+    dst = None
     try:
+        dst, _ = await _store_upload(file, {'.csv'})
+        from backend.services.motor_service import predict_from_csv
+        out = predict_from_csv(str(dst))
         return JSONResponse({'predictions': out.to_dict(orient='records')})
+    except HTTPException:
+        raise
     except RuntimeError as e:
         logging.error("RuntimeError in predict_motor_csv: %s", str(e))
         return JSONResponse(status_code=500, content={"detail": str(e)})
-    except Exception:
-        tb = traceback.format_exc()
-        logging.error("Exception in predict_motor_csv: %s", tb)
-        return JSONResponse(status_code=500, content={"detail": tb})
+    except Exception as e:
+        return _server_error('Exception in predict_motor_csv', e)
+    finally:
+        if dst is not None:
+            _remove_upload(dst)
 
 
 
@@ -206,22 +263,22 @@ async def predict_motor_timeseries(file: UploadFile = File(...)):
     runs the trained RandomForest. It returns both the original multi-class
     prediction and a binary (patient vs healthy) projection for demos.
     """
-    tmp = Path('tmp')
-    tmp.mkdir(exist_ok=True)
-    dst = tmp / file.filename
-    with dst.open('wb') as f:
-        shutil.copyfileobj(file.file, f)
+    dst = None
     try:
+        dst, _ = await _store_upload(file, {'.txt'})
         from backend.services.motor_service import predict_from_timeseries_file
         out = predict_from_timeseries_file(str(dst))
         return JSONResponse(out)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         logging.error("RuntimeError in predict_motor_timeseries: %s", str(e))
         return JSONResponse(status_code=500, content={"detail": str(e)})
-    except Exception:
-        tb = traceback.format_exc()
-        logging.error("Exception in predict_motor_timeseries: %s", tb)
-        return JSONResponse(status_code=500, content={"detail": tb})
+    except Exception as e:
+        return _server_error('Exception in predict_motor_timeseries', e)
+    finally:
+        if dst is not None:
+            _remove_upload(dst)
 
 
 
@@ -242,25 +299,24 @@ async def motor_session_upload(session_id: str, file: UploadFile = File(...)):
     if session_id not in _MOTOR_SESSIONS:
         return JSONResponse(status_code=404, content={'detail': 'Unknown session_id. Create one at /session/motor/new.'})
 
-    tmp = Path('tmp')
-    tmp.mkdir(exist_ok=True)
-    dst = tmp / file.filename
-    with dst.open('wb') as f:
-        shutil.copyfileobj(file.file, f)
-
+    dst = None
     try:
+        dst, original_name = await _store_upload(file, {'.txt'})
         from backend.services.motor_service import predict_from_timeseries_file
         out = predict_from_timeseries_file(str(dst))
-        out['filename'] = file.filename
+        out['filename'] = original_name
         _MOTOR_SESSIONS[session_id]['files'].append(out)
         return JSONResponse(out)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         logging.error('RuntimeError in motor_session_upload: %s', str(e))
         return JSONResponse(status_code=500, content={'detail': str(e)})
-    except Exception:
-        tb = traceback.format_exc()
-        logging.error('Exception in motor_session_upload: %s', tb)
-        return JSONResponse(status_code=500, content={'detail': tb})
+    except Exception as e:
+        return _server_error('Exception in motor_session_upload', e)
+    finally:
+        if dst is not None:
+            _remove_upload(dst)
 
 
 @app.get('/session/motor/{session_id}/summary')
@@ -275,24 +331,24 @@ async def motor_session_summary(session_id: str):
 
 @app.post('/predict/gait')
 async def predict_gait(file: UploadFile = File(...), explain: bool = False):
-    tmp = Path('tmp')
-    tmp.mkdir(exist_ok=True)
-    dst = tmp / file.filename
-    with dst.open('wb') as f:
-        shutil.copyfileobj(file.file, f)
-    res = predict_from_timeseries_file(str(dst))
+    dst = None
     try:
+        dst, _ = await _store_upload(file, {'.txt'})
+        res = predict_from_timeseries_file(str(dst))
         # attach server trace fields for easier debugging from frontend
         res['server_pid'] = SERVER_PID
         res['server_time'] = datetime.utcnow().isoformat()
         return JSONResponse(res)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         logging.error("RuntimeError in predict_gait: %s", str(e))
         return JSONResponse(status_code=500, content={"detail": str(e)})
-    except Exception:
-        tb = traceback.format_exc()
-        logging.error("Exception in predict_gait: %s", tb)
-        return JSONResponse(status_code=500, content={"detail": tb})
+    except Exception as e:
+        return _server_error('Exception in predict_gait', e)
+    finally:
+        if dst is not None:
+            _remove_upload(dst)
 
 
 @app.get('/xai/heatmap/{heatmap_id}')
