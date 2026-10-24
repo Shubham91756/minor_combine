@@ -82,6 +82,17 @@ def _motor_session_summary(session_id: str):
 @app.middleware('http')
 async def protect_api(request: Request, call_next):
     """Require an API key outside local development."""
+    content_length = request.headers.get('content-length')
+    if content_length:
+        try:
+            if int(content_length) > MAX_UPLOAD_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={'detail': f'Request exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)}MB limit.'},
+                )
+        except ValueError:
+            return JSONResponse(status_code=400, content={'detail': 'Invalid Content-Length header.'})
+
     if request.url.path == '/healthz':
         return await call_next(request)
 
@@ -169,6 +180,10 @@ def _prune_xai_heatmaps():
 
 @app.on_event('startup')
 def _preload_models():
+    if APP_ENV == 'production' and (not API_KEY or len(API_KEY) < 32):
+        raise RuntimeError(
+            'PARKINSONS_API_KEY must be configured with at least 32 characters in production.'
+        )
     # preload models so first API call is fast and model path errors show early
     try:
         ensure_loaded()
